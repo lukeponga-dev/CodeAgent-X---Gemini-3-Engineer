@@ -56,7 +56,8 @@ export const sendMessageToGemini = async (
   mode: AgentMode,
   contextFiles: FileContext[],
   history: { role: string; parts: { text: string }[] }[],
-  relevantFileIds: string[] | null = null
+  relevantFileIds: string[] | null = null,
+  thinkingBudget: number = 0
 ): Promise<string> => {
   
   // 1. Select Model based on Mode
@@ -69,9 +70,10 @@ export const sendMessageToGemini = async (
     systemInstruction: SYSTEM_INSTRUCTION,
   };
 
-  // Enable thinking for Architect mode for deep reasoning
-  if (mode === AgentMode.ARCHITECT) {
-    config.thinkingConfig = { thinkingBudget: 4096 }; // Allocate token budget for reasoning
+  // Enable thinking if budget > 0
+  // Gemini 3 and 2.5 models support thinking config
+  if (thinkingBudget > 0) {
+    config.thinkingConfig = { thinkingBudget };
   }
 
   // 3. Construct Content Parts

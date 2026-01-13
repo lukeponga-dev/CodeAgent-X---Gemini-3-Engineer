@@ -6,7 +6,7 @@ import { fetchGithubRepo } from './services/githubService';
 import { FileTree } from './components/FileTree';
 import { MessageBubble } from './components/MessageBubble';
 import { DependencyGraph } from './components/DependencyGraph';
-import { Send, Zap, BrainCircuit, Sparkles, MessageSquare, Network } from 'lucide-react';
+import { Send, Zap, BrainCircuit, Sparkles, MessageSquare, Network, Brain } from 'lucide-react';
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([
@@ -20,6 +20,7 @@ export default function App() {
   const [files, setFiles] = useState<FileContext[]>([]);
   const [input, setInput] = useState('');
   const [agentMode, setAgentMode] = useState<AgentMode>(AgentMode.ARCHITECT);
+  const [thinkingBudget, setThinkingBudget] = useState<number>(4096);
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.CHAT);
   const [agentState, setAgentState] = useState<AgentState>({ status: 'idle' });
   const [isImporting, setIsImporting] = useState(false);
@@ -34,6 +35,16 @@ export default function App() {
       scrollToBottom();
     }
   }, [messages, viewMode]);
+
+  const handleModeChange = (mode: AgentMode) => {
+    setAgentMode(mode);
+    // Set default thinking budgets based on mode
+    if (mode === AgentMode.ARCHITECT) {
+      setThinkingBudget(4096);
+    } else {
+      setThinkingBudget(0);
+    }
+  };
 
   // Memoize graph data calculation to avoid reprocessing on every render
   const graphData = useMemo(() => generateDependencyGraph(files), [files]);
@@ -59,12 +70,14 @@ export default function App() {
          prompt = `I have just uploaded ${newFileCount} new file(s) to the workspace. \n\nPlease perform an immediate analysis of the codebase context. \n1. Summarize the architectural structure based on these new additions.\n2. Identify any potential bugs, security risks, or performance bottlenecks.\n3. Suggest the next logical step for development.\n\nKeep the response concise and actionable.`;
       }
 
-      // Always use ARCHITECT mode for deep reasoning on new files
+      // Always use ARCHITECT mode for deep reasoning on new files, with current thinking budget
       const responseText = await sendMessageToGemini(
         prompt,
         AgentMode.ARCHITECT,
         currentFiles,
-        []
+        [],
+        null,
+        Math.max(thinkingBudget, 2048) // Ensure at least some thinking for analysis
       );
 
       setMessages(prev => prev.map(msg => 
@@ -215,9 +228,9 @@ export default function App() {
         userMsg.text,
         agentMode,
         files,
-        // Convert internal message format to history for potential future chat implementation
-        // currently using stateless content generation for robustness
-        [] 
+        [], 
+        null,
+        thinkingBudget
       );
 
       // Replace thinking message with actual response
@@ -274,7 +287,30 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+             {/* Thinking Budget Slider */}
+             <div className="flex items-center gap-3">
+               <div className="flex flex-col items-end">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-gray-300">
+                    <Brain size={12} className="text-purple-400" />
+                    <span>Thinking Budget</span>
+                  </div>
+                  <span className="text-[10px] text-gray-500">{thinkingBudget} tokens</span>
+               </div>
+               <input 
+                 type="range"
+                 min="0"
+                 max="16000"
+                 step="1024"
+                 value={thinkingBudget}
+                 onChange={(e) => setThinkingBudget(parseInt(e.target.value))}
+                 className="w-24 h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-purple-500 hover:accent-purple-400"
+                 title={`Current budget: ${thinkingBudget} tokens`}
+               />
+             </div>
+
+             <div className="h-6 w-px bg-gray-800"></div>
+
             {/* View Toggle */}
             <div className="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
               <button
@@ -304,7 +340,7 @@ export default function App() {
             {/* Mode Toggle */}
             <div className="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
               <button 
-                onClick={() => setAgentMode(AgentMode.ARCHITECT)}
+                onClick={() => handleModeChange(AgentMode.ARCHITECT)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   agentMode === AgentMode.ARCHITECT 
                     ? 'bg-gray-800 text-emerald-400 shadow-sm border border-gray-700' 
@@ -315,7 +351,7 @@ export default function App() {
                 Architect
               </button>
               <button 
-                onClick={() => setAgentMode(AgentMode.FAST)}
+                onClick={() => handleModeChange(AgentMode.FAST)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   agentMode === AgentMode.FAST 
                     ? 'bg-gray-800 text-blue-400 shadow-sm border border-gray-700' 
