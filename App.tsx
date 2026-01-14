@@ -6,7 +6,7 @@ import { fetchGithubRepo } from './services/githubService';
 import { FileTree } from './components/FileTree';
 import { MessageBubble } from './components/MessageBubble';
 import { DependencyGraph } from './components/DependencyGraph';
-import { Send, Zap, BrainCircuit, MessageSquare, Network, Cpu, Command } from 'lucide-react';
+import { Send, Zap, BrainCircuit, MessageSquare, Network, Cpu, Command, Bug, PlayCircle } from 'lucide-react';
 
 // Storage keys for persistence
 const STORAGE_KEYS = {
@@ -29,7 +29,7 @@ export default function App() {
       {
         id: 'welcome',
         role: 'model',
-        text: "# CodeAgent X Online \n\nI am ready to analyze your repository. I can visualize dependencies, debug stack traces, and architect solutions.\n\n### Capabilities\n\n*   **Deep Reasoning**: I use Gemini 3 to think through complex bugs.\n*   **Full Context**: Upload your whole `src` folder for holistic understanding.\n*   **Visual Engineering**: View the architecture graph to spot coupling issues.",
+        text: "# CodeAgent X Online \n\nI am ready to analyze your repository. I can visualize dependencies, debug stack traces, and architect solutions.\n\n### Capabilities\n\n*   **Deep Reasoning**: I use Gemini 3 to think through complex bugs.\n*   **Full Context**: Upload your whole `src` folder for holistic understanding.\n*   **Visual Engineering**: View the architecture graph to spot coupling issues.\n*   **Autonomous Debugging**: Enable 'Debug' mode to verify fixes before applying them.",
         timestamp: Date.now()
       }
     ];
@@ -86,7 +86,7 @@ export default function App() {
 
   const handleModeChange = (mode: AgentMode) => {
     setAgentMode(mode);
-    if (mode === AgentMode.ARCHITECT) {
+    if (mode === AgentMode.ARCHITECT || mode === AgentMode.DEBUG) {
       setThinkingBudget(4096);
     } else {
       setThinkingBudget(0);
@@ -260,22 +260,115 @@ export default function App() {
     }]);
 
     try {
-      const responseText = await sendMessageToGemini(
-        userMsg.text,
-        agentMode,
-        files,
-        [], 
-        null,
-        thinkingBudget
-      );
+      if (agentMode === AgentMode.DEBUG) {
+        // --- DEBUG MODE FLOW ---
+        
+        // Step 1: Generate Initial Fix
+        const draftResponseText = await sendMessageToGemini(
+          userMsg.text,
+          AgentMode.ARCHITECT,
+          files,
+          [],
+          null,
+          thinkingBudget
+        );
+        const draft = processResponse(draftResponseText);
+        
+        // Step 2: Verify Fix
+        setAgentState({ status: 'verifying' });
+        
+        const verificationPrompt = `
+          I have generated a potential solution. Now act as a QA Simulation Environment.
+          
+          Proposed Solution:
+          ${draft.text}
+          
+          Your Task:
+          1. Mentally simulate running this code against the provided file context.
+          2. Check for syntax errors, logical flaws, memory leaks, or race conditions.
+          3. Determine if it fully addresses the user's original request: "${userMsg.text}".
+          
+          Output Format:
+          If verified: "STATUS: VERIFIED"
+          If failed: "STATUS: FAILED \n [Detailed reasons why]"
+        `;
 
-      const { text, thoughts } = processResponse(responseText);
+        const verificationResponseText = await sendMessageToGemini(
+          verificationPrompt,
+          AgentMode.ARCHITECT,
+          files,
+          [{ role: 'user', parts: [{ text: userMsg.text }] }, { role: 'model', parts: [{ text: draftResponseText }] }],
+          null,
+          2048 // Lower budget for QA
+        );
+        const verification = processResponse(verificationResponseText);
 
-      setMessages(prev => prev.map(msg => 
-        msg.id === thinkingMsgId 
-          ? { ...msg, text: text, thoughts: thoughts, isThinking: false }
-          : msg
-      ));
+        let finalThoughts = draft.thoughts || "";
+        finalThoughts += `\n\n### 🔍 QA Verification Simulation\n${verification.thoughts || "Executing mental sandbox test suite..."}\n\n**Result:** ${verification.text.includes("STATUS: VERIFIED") ? "Pass" : "Fail"}`;
+
+        if (verification.text.includes("STATUS: VERIFIED")) {
+           // Success path
+           setMessages(prev => prev.map(msg => 
+            msg.id === thinkingMsgId 
+              ? { ...msg, text: draft.text, thoughts: finalThoughts, isThinking: false }
+              : msg
+           ));
+        } else {
+           // Failure & Fix Path
+           setAgentState({ status: 'writing' }); // Refining
+           
+           const refinementPrompt = `
+             The verification simulation failed with the following errors:
+             ${verification.text}
+             
+             Please REWRITE the solution to fix these specific issues. 
+             Provide the complete, corrected code.
+           `;
+           
+           const finalFixResponseText = await sendMessageToGemini(
+              refinementPrompt,
+              AgentMode.ARCHITECT,
+              files,
+              [
+                { role: 'user', parts: [{ text: userMsg.text }] }, 
+                { role: 'model', parts: [{ text: draftResponseText }] },
+                { role: 'user', parts: [{ text: verificationPrompt }] },
+                { role: 'model', parts: [{ text: verificationResponseText }] }
+              ],
+              null,
+              4096
+           );
+           const finalFix = processResponse(finalFixResponseText);
+           
+           finalThoughts += `\n\n### 🛠️ Autonomous Repair\nDetected failure in simulation. Applying fixes based on QA feedback.\n${finalFix.thoughts || ""}`;
+
+           setMessages(prev => prev.map(msg => 
+            msg.id === thinkingMsgId 
+              ? { ...msg, text: finalFix.text, thoughts: finalThoughts, isThinking: false }
+              : msg
+           ));
+        }
+
+      } else {
+        // --- STANDARD MODES ---
+        const responseText = await sendMessageToGemini(
+          userMsg.text,
+          agentMode,
+          files,
+          [], 
+          null,
+          thinkingBudget
+        );
+
+        const { text, thoughts } = processResponse(responseText);
+
+        setMessages(prev => prev.map(msg => 
+          msg.id === thinkingMsgId 
+            ? { ...msg, text: text, thoughts: thoughts, isThinking: false }
+            : msg
+        ));
+      }
+      
       setAgentState({ status: 'idle' });
 
     } catch (error) {
@@ -350,6 +443,26 @@ export default function App() {
     }
   };
 
+  const getStatusText = () => {
+    switch (agentState.status) {
+      case 'analyzing': return 'Reasoning...';
+      case 'verifying': return 'Simulating...';
+      case 'writing': return 'Refining Fix...';
+      case 'error': return 'System Error';
+      default: return 'Ready';
+    }
+  };
+
+  const getStatusColor = () => {
+     switch (agentState.status) {
+      case 'analyzing': return 'bg-neon-purple';
+      case 'verifying': return 'bg-neon-amber';
+      case 'writing': return 'bg-neon-cyan';
+      case 'error': return 'bg-neon-rose';
+      default: return 'bg-neon-emerald';
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen bg-obsidian-950 text-gray-200 font-sans overflow-hidden bg-grid selection:bg-neon-cyan/20 selection:text-neon-cyan">
       {/* File Tree Sidebar */}
@@ -380,9 +493,9 @@ export default function App() {
             </div>
             <div className={`w-[1px] h-6 bg-white/10 mx-2`}></div>
             <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${agentState.status === 'analyzing' ? 'bg-neon-amber animate-pulse' : 'bg-neon-emerald'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${getStatusColor()} animate-pulse`}></span>
                 <span className="text-[10px] text-gray-400 font-mono uppercase">
-                  {agentState.status === 'analyzing' ? 'Processing...' : 'Ready'}
+                  {getStatusText()}
                 </span>
             </div>
           </div>
@@ -426,6 +539,17 @@ export default function App() {
                   Think
                 </button>
                 <button 
+                  onClick={() => handleModeChange(AgentMode.DEBUG)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    agentMode === AgentMode.DEBUG 
+                      ? 'bg-neon-amber/10 text-neon-amber ring-1 ring-neon-amber/30' 
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <Bug size={14} />
+                  Debug
+                </button>
+                <button 
                   onClick={() => handleModeChange(AgentMode.FAST)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     agentMode === AgentMode.FAST 
@@ -466,13 +590,19 @@ export default function App() {
         {viewMode === ViewMode.CHAT && (
           <div className="absolute bottom-6 left-0 right-0 z-30 px-6">
              <div className="max-w-4xl mx-auto">
-                <div className="glass-input rounded-2xl p-1.5 transition-all duration-300 focus-within:ring-1 focus-within:ring-neon-cyan/30 focus-within:shadow-[0_0_30px_-5px_rgba(6,182,212,0.1)]">
+                <div className={`glass-input rounded-2xl p-1.5 transition-all duration-300 focus-within:ring-1 focus-within:shadow-[0_0_30px_-5px_rgba(6,182,212,0.1)] ${
+                    agentMode === AgentMode.DEBUG ? 'focus-within:ring-neon-amber/30 border-neon-amber/20' : 'focus-within:ring-neon-cyan/30'
+                }`}>
                    <div className="relative">
                       <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={files.length > 0 ? "Ask about current context..." : "Initialize task..."}
+                        placeholder={
+                            agentMode === AgentMode.DEBUG 
+                             ? "Describe the bug to diagnose..."
+                             : files.length > 0 ? "Ask about current context..." : "Initialize task..."
+                        }
                         className="w-full bg-transparent border-none text-gray-200 p-4 pr-12 focus:ring-0 resize-none min-h-[56px] max-h-[160px] text-sm font-mono placeholder-gray-600 leading-relaxed custom-scrollbar"
                         rows={1}
                         style={{ height: 'auto', minHeight: '56px' }}
@@ -480,17 +610,19 @@ export default function App() {
                       <div className="absolute right-2 bottom-2">
                         <button
                           onClick={handleSend}
-                          disabled={!input.trim() && files.length === 0 || agentState.status === 'analyzing'}
+                          disabled={!input.trim() && files.length === 0 || agentState.status !== 'idle'}
                           className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
-                            (!input.trim() && files.length === 0) || agentState.status === 'analyzing'
+                            (!input.trim() && files.length === 0) || agentState.status !== 'idle'
                               ? 'bg-white/5 text-gray-600 cursor-not-allowed'
-                              : 'bg-neon-cyan text-obsidian-950 hover:bg-cyan-300 shadow-lg shadow-cyan-500/20'
+                              : agentMode === AgentMode.DEBUG 
+                                ? 'bg-neon-amber text-obsidian-950 hover:bg-amber-400 shadow-lg shadow-amber-500/20'
+                                : 'bg-neon-cyan text-obsidian-950 hover:bg-cyan-300 shadow-lg shadow-cyan-500/20'
                           }`}
                         >
-                          {agentState.status === 'analyzing' ? (
+                          {agentState.status !== 'idle' ? (
                             <div className="w-4 h-4 border-2 border-obsidian-950 border-t-transparent rounded-full animate-spin"></div>
                           ) : (
-                            <Send size={16} strokeWidth={2.5} />
+                            agentMode === AgentMode.DEBUG ? <Bug size={16} strokeWidth={2.5} /> : <Send size={16} strokeWidth={2.5} />
                           )}
                         </button>
                       </div>
@@ -502,6 +634,11 @@ export default function App() {
                        <span className="text-[10px] text-gray-600 font-mono">
                            Context: <span className={files.length > 0 ? "text-neon-emerald" : "text-gray-500"}>{files.length} files</span>
                        </span>
+                       {agentMode === AgentMode.DEBUG && (
+                           <span className="text-[10px] text-neon-amber font-mono flex items-center gap-1.5 ml-auto">
+                               <PlayCircle size={10} /> Auto-Verification Active
+                           </span>
+                       )}
                    </div>
                 </div>
              </div>

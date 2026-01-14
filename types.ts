@@ -1,6 +1,7 @@
 export enum AgentMode {
   FAST = 'FAST', // gemini-3-flash
-  ARCHITECT = 'ARCHITECT' // gemini-3-pro with thinking
+  ARCHITECT = 'ARCHITECT', // gemini-3-pro with thinking
+  DEBUG = 'DEBUG' // gemini-3-pro with iterative verification
 }
 
 export enum ViewMode {
@@ -27,7 +28,7 @@ export interface Message {
 }
 
 export interface AgentState {
-  status: 'idle' | 'analyzing' | 'writing' | 'error';
+  status: 'idle' | 'analyzing' | 'verifying' | 'writing' | 'error';
   currentAction?: string;
 }
 
