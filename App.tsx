@@ -6,7 +6,7 @@ import { fetchGithubRepo } from './services/githubService';
 import { FileTree } from './components/FileTree';
 import { MessageBubble } from './components/MessageBubble';
 import { DependencyGraph } from './components/DependencyGraph';
-import { Send, Zap, BrainCircuit, Sparkles, MessageSquare, Network, Brain } from 'lucide-react';
+import { Send, Zap, BrainCircuit, MessageSquare, Network, Cpu, Command } from 'lucide-react';
 
 // Storage keys for persistence
 const STORAGE_KEYS = {
@@ -29,7 +29,7 @@ export default function App() {
       {
         id: 'welcome',
         role: 'model',
-        text: "I am CodeAgent X, powered by Gemini 3. \n\nI can analyze your codebase, interpret architecture diagrams, and debug failure signals. Upload your files to the context sidebar to get started.",
+        text: "# CodeAgent X Online \n\nI am ready to analyze your repository. I can visualize dependencies, debug stack traces, and architect solutions.\n\n### Capabilities\n\n*   **Deep Reasoning**: I use Gemini 3 to think through complex bugs.\n*   **Full Context**: Upload your whole `src` folder for holistic understanding.\n*   **Visual Engineering**: View the architecture graph to spot coupling issues.",
         timestamp: Date.now()
       }
     ];
@@ -86,7 +86,6 @@ export default function App() {
 
   const handleModeChange = (mode: AgentMode) => {
     setAgentMode(mode);
-    // Set default thinking budgets based on mode
     if (mode === AgentMode.ARCHITECT) {
       setThinkingBudget(4096);
     } else {
@@ -94,10 +93,8 @@ export default function App() {
     }
   };
 
-  // Memoize graph data calculation to avoid reprocessing on every render
   const graphData = useMemo(() => generateDependencyGraph(files), [files]);
 
-  // Helper to process response text and extract thoughts
   const processResponse = (fullText: string): { text: string; thoughts?: string } => {
     const thinkingMatch = fullText.match(/<thinking>([\s\S]*?)<\/thinking>/);
     if (thinkingMatch) {
@@ -129,14 +126,13 @@ export default function App() {
          prompt = `I have just uploaded ${newFileCount} new file(s) to the workspace. \n\nPlease perform an immediate analysis of the codebase context. \n1. Summarize the architectural structure based on these new additions.\n2. Identify any potential bugs, security risks, or performance bottlenecks.\n3. Suggest the next logical step for development.\n\nKeep the response concise and actionable.`;
       }
 
-      // Always use ARCHITECT mode for deep reasoning on new files, with current thinking budget
       const responseText = await sendMessageToGemini(
         prompt,
         AgentMode.ARCHITECT,
         currentFiles,
         [],
         null,
-        Math.max(thinkingBudget, 2048) // Ensure at least some thinking for analysis
+        Math.max(thinkingBudget, 2048)
       );
 
       const { text, thoughts } = processResponse(responseText);
@@ -152,7 +148,7 @@ export default function App() {
       console.error(error);
       setMessages(prev => prev.map(msg => 
         msg.id === thinkingMsgId 
-          ? { ...msg, text: "I analyzed the uploaded files but encountered an error generating the report.", isThinking: false }
+          ? { ...msg, text: "System Error: Automated analysis failed.", isThinking: false }
           : msg
       ));
       setAgentState({ status: 'error' });
@@ -170,7 +166,7 @@ export default function App() {
       const systemMsg: Message = {
         id: Date.now().toString(),
         role: 'model',
-        text: `Successfully imported ${repoFiles.length} files from ${url}. Analyzing...`,
+        text: `> System Notification: Imported ${repoFiles.length} files from ${url}. Initializing Analysis Protocol...`,
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, systemMsg]);
@@ -180,14 +176,13 @@ export default function App() {
       const errorMsg: Message = {
         id: Date.now().toString(),
         role: 'model',
-        text: `GitHub Import Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        text: `Error: GitHub Import Failed. ${error instanceof Error ? error.message : "Unknown error"}`,
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, errorMsg]);
       setAgentState({ status: 'error' });
     } finally {
       setIsImporting(false);
-      // Ensure state is idle if not analysis is triggered (error case)
       if (agentState.status === 'error') {
           setTimeout(() => setAgentState({ status: 'idle' }), 2000);
       }
@@ -196,37 +191,26 @@ export default function App() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setAgentState({ status: 'analyzing' }); // Show 'Reasoning...' immediately
+      setAgentState({ status: 'analyzing' });
 
       const newFiles: FileContext[] = [];
       for (let i = 0; i < e.target.files.length; i++) {
         const file = e.target.files[i];
         const reader = new FileReader();
-        
         const isImage = file.type.startsWith('image/');
         
         await new Promise<void>((resolve) => {
           reader.onload = (event) => {
             const content = event.target?.result as string;
-            // Use base64 string for images, text for code/logs
             const finalContent = isImage ? content.split(',')[1] : content; 
-
-            // Simple heuristic for file types
             let type: FileContext['type'] = 'file';
             const lowerName = file.name.toLowerCase();
-            if (isImage) {
-              type = 'image';
-            } else if (lowerName.endsWith('.log')) {
-              type = 'log';
-            } else if (lowerName.endsWith('.json') || lowerName.endsWith('.csv')) {
-              type = 'metric';
-            } else if (lowerName.includes('issue') || lowerName.includes('report') || lowerName.includes('ticket')) {
-              type = 'issue';
-            }
+            if (isImage) { type = 'image'; } 
+            else if (lowerName.endsWith('.log')) { type = 'log'; } 
+            else if (lowerName.endsWith('.json') || lowerName.endsWith('.csv')) { type = 'metric'; } 
+            else if (lowerName.includes('issue') || lowerName.includes('report')) { type = 'issue'; }
 
-            // Use webkitRelativePath for folder uploads to preserve structure
             const fileName = file.webkitRelativePath || file.name;
-
             newFiles.push({
               id: Math.random().toString(36).substring(7),
               name: fileName,
@@ -236,22 +220,14 @@ export default function App() {
             });
             resolve();
           };
-          
-          if (isImage) {
-            reader.readAsDataURL(file);
-          } else {
-            reader.readAsText(file);
-          }
+          if (isImage) reader.readAsDataURL(file);
+          else reader.readAsText(file);
         });
       }
       
       const updatedFiles = [...files, ...newFiles];
       setFiles(updatedFiles);
-      
-      // Reset input to allow same file selection again if needed
       e.target.value = '';
-
-      // Trigger the analysis
       await triggerAutoAnalysis(updatedFiles, newFiles.length, 'upload');
     }
   };
@@ -274,7 +250,6 @@ export default function App() {
     setInput('');
     setAgentState({ status: 'analyzing' });
 
-    // Add placeholder thinking message
     const thinkingMsgId = 'thinking-' + Date.now();
     setMessages(prev => [...prev, {
       id: thinkingMsgId,
@@ -296,7 +271,6 @@ export default function App() {
 
       const { text, thoughts } = processResponse(responseText);
 
-      // Replace thinking message with actual response
       setMessages(prev => prev.map(msg => 
         msg.id === thinkingMsgId 
           ? { ...msg, text: text, thoughts: thoughts, isThinking: false }
@@ -307,7 +281,7 @@ export default function App() {
     } catch (error) {
       setMessages(prev => prev.map(msg => 
         msg.id === thinkingMsgId 
-          ? { ...msg, text: "I encountered a critical error processing your request.", isThinking: false }
+          ? { ...msg, text: "Critical Failure: Unable to generate response.", isThinking: false }
           : msg
       ));
       setAgentState({ status: 'error' });
@@ -316,18 +290,9 @@ export default function App() {
 
   const handleCodeReview = async (code: string, language: string) => {
     setAgentState({ status: 'analyzing' });
-
     const reviewPrompt = `
       Please review the following ${language} code snippet. 
-      
-      Focus on:
-      1. Potential bugs and logic errors.
-      2. Security vulnerabilities.
-      3. Code style and best practice improvements.
-      4. Performance optimizations.
-
-      Provide the review in a concise structured format, followed by the corrected code block if necessary.
-
+      Focus on: Potential bugs, security, code style, and performance.
       Code to Review:
       \`\`\`${language}
       ${code}
@@ -335,8 +300,6 @@ export default function App() {
     `;
 
     const thinkingMsgId = 'review-' + Date.now();
-    
-    // Optimistic UI: Add the request to chat history effectively
     const userMsg: Message = {
       id: 'req-' + Date.now(),
       role: 'user',
@@ -353,16 +316,14 @@ export default function App() {
     }]);
 
     try {
-      // Use ARCHITECT mode for reviews to get better reasoning
       const responseText = await sendMessageToGemini(
         reviewPrompt,
         AgentMode.ARCHITECT,
         files,
         [], 
         null,
-        2048 // Sufficient budget for code review reasoning
+        2048
       );
-
       const { text, thoughts } = processResponse(responseText);
 
       setMessages(prev => prev.map(msg => 
@@ -375,7 +336,7 @@ export default function App() {
     } catch (error) {
       setMessages(prev => prev.map(msg => 
         msg.id === thinkingMsgId 
-          ? { ...msg, text: "Unable to complete code review at this time.", isThinking: false }
+          ? { ...msg, text: "Code review process failed.", isThinking: false }
           : msg
       ));
       setAgentState({ status: 'error' });
@@ -390,15 +351,9 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-cosmic-950 text-cosmic-100 font-sans overflow-hidden">
-      {/* Background Ambience */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-accent-purple/5 blur-[120px]"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-accent-emerald/5 blur-[120px]"></div>
-      </div>
-
-      {/* Sidebar: Repository Context */}
-      <div className="z-10 relative h-full flex shrink-0">
+    <div className="flex h-screen w-screen bg-obsidian-950 text-gray-200 font-sans overflow-hidden bg-grid selection:bg-neon-cyan/20 selection:text-neon-cyan">
+      {/* File Tree Sidebar */}
+      <div className="z-20 relative h-full flex shrink-0">
           <FileTree 
             files={files} 
             onRemove={removeFile} 
@@ -408,80 +363,84 @@ export default function App() {
           />
       </div>
 
-      {/* Main Area */}
-      <div className="flex-1 flex flex-col h-full relative z-10">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col h-full relative z-10 bg-obsidian-950/50">
         
-        {/* Header */}
-        <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 glass-panel z-20 shrink-0">
+        {/* Modern Glass Header */}
+        <header className="h-16 flex items-center justify-between px-6 backdrop-blur-md border-b border-white/5 z-20 shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-9 h-9 bg-gradient-to-tr from-emerald-500 to-cyan-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-emerald-500/20 ring-1 ring-white/10">
-              <Sparkles size={18} />
+            <div className="flex items-center gap-3">
+               <div className="w-8 h-8 bg-gradient-to-br from-neon-purple to-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-neon-purple/20">
+                 <Cpu size={16} />
+               </div>
+               <div>
+                  <h1 className="font-bold text-gray-100 tracking-tight leading-none">CodeAgent X</h1>
+                  <span className="text-[10px] text-gray-500 font-mono tracking-wider uppercase">Architect Preview</span>
+               </div>
             </div>
-            <div>
-              <h1 className="font-bold text-gray-100 tracking-tight text-lg">CodeAgent X</h1>
-              <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono uppercase tracking-widest">
-                <span className={`w-1.5 h-1.5 rounded-full ${agentState.status === 'analyzing' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`}></span>
-                {agentState.status === 'analyzing' ? 'Reasoning Engine Active' : 'System Online'}
-              </div>
+            <div className={`w-[1px] h-6 bg-white/10 mx-2`}></div>
+            <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${agentState.status === 'analyzing' ? 'bg-neon-amber animate-pulse' : 'bg-neon-emerald'}`}></span>
+                <span className="text-[10px] text-gray-400 font-mono uppercase">
+                  {agentState.status === 'analyzing' ? 'Processing...' : 'Ready'}
+                </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* View Toggle */}
-            <div className="flex bg-cosmic-900/50 p-1 rounded-lg border border-white/5">
-              <button
-                onClick={() => setViewMode(ViewMode.CHAT)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  viewMode === ViewMode.CHAT
-                    ? 'bg-cosmic-700 text-white shadow-sm ring-1 ring-white/5'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                <MessageSquare size={14} />
-                Chat
-              </button>
-              <button
-                onClick={() => setViewMode(ViewMode.GRAPH)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  viewMode === ViewMode.GRAPH
-                    ? 'bg-cosmic-700 text-white shadow-sm ring-1 ring-white/5'
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                <Network size={14} />
-                Graph
-              </button>
-            </div>
+          <div className="flex items-center gap-3">
+             <div className="flex p-0.5 bg-obsidian-800 rounded-lg border border-white/5">
+                <button
+                  onClick={() => setViewMode(ViewMode.CHAT)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    viewMode === ViewMode.CHAT
+                      ? 'bg-obsidian-700 text-white shadow-sm ring-1 ring-white/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <MessageSquare size={14} />
+                  Chat
+                </button>
+                <button
+                  onClick={() => setViewMode(ViewMode.GRAPH)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    viewMode === ViewMode.GRAPH
+                      ? 'bg-obsidian-700 text-white shadow-sm ring-1 ring-white/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <Network size={14} />
+                  Graph
+                </button>
+             </div>
 
-            {/* Mode Toggle */}
-            <div className="flex bg-cosmic-900/50 p-1 rounded-lg border border-white/5">
-              <button 
-                onClick={() => handleModeChange(AgentMode.ARCHITECT)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  agentMode === AgentMode.ARCHITECT 
-                    ? 'bg-cosmic-700 text-accent-emerald shadow-sm ring-1 ring-emerald-500/20' 
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                <BrainCircuit size={14} />
-                Architect
-              </button>
-              <button 
-                onClick={() => handleModeChange(AgentMode.FAST)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  agentMode === AgentMode.FAST 
-                    ? 'bg-cosmic-700 text-accent-cyan shadow-sm ring-1 ring-cyan-500/20' 
-                    : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                <Zap size={14} />
-                Fast
-              </button>
-            </div>
+             <div className="flex p-0.5 bg-obsidian-800 rounded-lg border border-white/5">
+                <button 
+                  onClick={() => handleModeChange(AgentMode.ARCHITECT)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    agentMode === AgentMode.ARCHITECT 
+                      ? 'bg-neon-purple/10 text-neon-purple ring-1 ring-neon-purple/30' 
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <BrainCircuit size={14} />
+                  Think
+                </button>
+                <button 
+                  onClick={() => handleModeChange(AgentMode.FAST)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    agentMode === AgentMode.FAST 
+                      ? 'bg-neon-cyan/10 text-neon-cyan ring-1 ring-neon-cyan/30' 
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  <Zap size={14} />
+                  Fast
+                </button>
+             </div>
           </div>
         </header>
 
-        {/* Content Area */}
+        {/* Viewport */}
         <div className="flex-1 overflow-hidden relative">
           {viewMode === ViewMode.CHAT ? (
             <main className="h-full overflow-y-auto p-6 scroll-smooth pb-0">
@@ -493,7 +452,7 @@ export default function App() {
                     onCodeReview={handleCodeReview}
                   />
                 ))}
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} className="h-24" />
               </div>
             </main>
           ) : (
@@ -503,56 +462,51 @@ export default function App() {
           )}
         </div>
 
-        {/* Input Area */}
+        {/* Floating Input Capsule */}
         {viewMode === ViewMode.CHAT && (
-          <div className="p-6 pt-2 shrink-0 bg-gradient-to-t from-cosmic-950 via-cosmic-950 to-transparent">
-            <div className="max-w-4xl mx-auto relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-500/30 to-blue-500/30 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-              <div className="relative bg-cosmic-900/80 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-black/5">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={files.length > 0 ? "Ask about the loaded context..." : "Describe a task or upload files for analysis..."}
-                  className="w-full bg-transparent border-none text-gray-200 p-5 focus:ring-0 resize-none min-h-[70px] max-h-[200px] text-sm font-mono placeholder-gray-600 leading-relaxed"
-                  rows={Math.min(input.split('\n').length + 1, 8)}
-                />
-                <div className="flex items-center justify-between px-4 py-2.5 bg-white/5 border-t border-white/5">
-                  <div className="flex items-center gap-3 text-xs text-gray-500 font-mono">
-                     <span className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 border border-white/5">
-                       <span className="text-[10px]">⌘</span>
-                       <span>ENTER</span>
-                     </span>
-                  </div>
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim() && files.length === 0 || agentState.status === 'analyzing'}
-                    className={`px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold tracking-wide uppercase ${
-                      (!input.trim() && files.length === 0) || agentState.status === 'analyzing'
-                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                    }`}
-                  >
-                    {agentState.status === 'analyzing' ? (
-                      <span className="flex items-center gap-2">Processing...</span>
-                    ) : (
-                      <>
-                        <span>Execute</span>
-                        <Send size={14} />
-                      </>
-                    )}
-                  </button>
+          <div className="absolute bottom-6 left-0 right-0 z-30 px-6">
+             <div className="max-w-4xl mx-auto">
+                <div className="glass-input rounded-2xl p-1.5 transition-all duration-300 focus-within:ring-1 focus-within:ring-neon-cyan/30 focus-within:shadow-[0_0_30px_-5px_rgba(6,182,212,0.1)]">
+                   <div className="relative">
+                      <textarea
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={files.length > 0 ? "Ask about current context..." : "Initialize task..."}
+                        className="w-full bg-transparent border-none text-gray-200 p-4 pr-12 focus:ring-0 resize-none min-h-[56px] max-h-[160px] text-sm font-mono placeholder-gray-600 leading-relaxed custom-scrollbar"
+                        rows={1}
+                        style={{ height: 'auto', minHeight: '56px' }}
+                      />
+                      <div className="absolute right-2 bottom-2">
+                        <button
+                          onClick={handleSend}
+                          disabled={!input.trim() && files.length === 0 || agentState.status === 'analyzing'}
+                          className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                            (!input.trim() && files.length === 0) || agentState.status === 'analyzing'
+                              ? 'bg-white/5 text-gray-600 cursor-not-allowed'
+                              : 'bg-neon-cyan text-obsidian-950 hover:bg-cyan-300 shadow-lg shadow-cyan-500/20'
+                          }`}
+                        >
+                          {agentState.status === 'analyzing' ? (
+                            <div className="w-4 h-4 border-2 border-obsidian-950 border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Send size={16} strokeWidth={2.5} />
+                          )}
+                        </button>
+                      </div>
+                   </div>
+                   <div className="px-4 pb-2 flex items-center gap-4 border-t border-white/5 pt-2">
+                       <span className="text-[10px] text-gray-600 font-mono flex items-center gap-1.5">
+                           <Command size={10} /> RETURN to send
+                       </span>
+                       <span className="text-[10px] text-gray-600 font-mono">
+                           Context: <span className={files.length > 0 ? "text-neon-emerald" : "text-gray-500"}>{files.length} files</span>
+                       </span>
+                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="text-center mt-3">
-              <p className="text-[10px] text-gray-600 font-mono">
-                  Gemini 3 Preview Environment • Context Window: {files.length > 0 ? 'Active' : 'Empty'}
-              </p>
-            </div>
+             </div>
           </div>
         )}
-
       </div>
     </div>
   );
