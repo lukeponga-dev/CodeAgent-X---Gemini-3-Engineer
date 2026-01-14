@@ -6,12 +6,19 @@ import { fetchGithubRepo } from './services/githubService';
 import { FileTree } from './components/FileTree';
 import { MessageBubble } from './components/MessageBubble';
 import { DependencyGraph } from './components/DependencyGraph';
-import { Send, Zap, BrainCircuit, MessageSquare, Network, Cpu, Command, Bug, PlayCircle } from 'lucide-react';
+import { Send, Zap, BrainCircuit, MessageSquare, Network, Cpu, Command, Bug, PlayCircle, RotateCcw, Trash2, Save } from 'lucide-react';
 
 // Storage keys for persistence
 const STORAGE_KEYS = {
   MESSAGES: 'codeagent_messages',
   FILES: 'codeagent_files'
+};
+
+const DEFAULT_MESSAGE: Message = {
+  id: 'welcome',
+  role: 'model',
+  text: "# CodeAgent X Online \n\nI am ready to analyze your repository. I can visualize dependencies, debug stack traces, and architect solutions.\n\n### Capabilities\n\n*   **Deep Reasoning**: I use Gemini 3 to think through complex bugs.\n*   **Full Context**: Upload your whole `src` folder for holistic understanding.\n*   **Visual Engineering**: View the architecture graph to spot coupling issues.\n*   **Autonomous Debugging**: Enable 'Debug' mode to verify fixes before applying them.",
+  timestamp: Date.now()
 };
 
 export default function App() {
@@ -25,14 +32,7 @@ export default function App() {
     } catch (e) {
       console.warn('Failed to restore messages from storage:', e);
     }
-    return [
-      {
-        id: 'welcome',
-        role: 'model',
-        text: "# CodeAgent X Online \n\nI am ready to analyze your repository. I can visualize dependencies, debug stack traces, and architect solutions.\n\n### Capabilities\n\n*   **Deep Reasoning**: I use Gemini 3 to think through complex bugs.\n*   **Full Context**: Upload your whole `src` folder for holistic understanding.\n*   **Visual Engineering**: View the architecture graph to spot coupling issues.\n*   **Autonomous Debugging**: Enable 'Debug' mode to verify fixes before applying them.",
-        timestamp: Date.now()
-      }
-    ];
+    return [DEFAULT_MESSAGE];
   });
 
   // Initialize files from localStorage or empty
@@ -54,6 +54,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.CHAT);
   const [agentState, setAgentState] = useState<AgentState>({ status: 'idle' });
   const [isImporting, setIsImporting] = useState(false);
+  const [lastSaved, setLastSaved] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -64,6 +65,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+      setLastSaved(Date.now());
     } catch (e) {
       console.error('Failed to save messages to local storage (likely quota exceeded):', e);
     }
@@ -73,6 +75,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.FILES, JSON.stringify(files));
+      setLastSaved(Date.now());
     } catch (e) {
       console.error('Failed to save files to local storage (likely quota exceeded):', e);
     }
@@ -90,6 +93,17 @@ export default function App() {
       setThinkingBudget(4096);
     } else {
       setThinkingBudget(0);
+    }
+  };
+
+  const handleResetSession = () => {
+    if (window.confirm("Are you sure you want to reset the session? This will delete all chat history and loaded files locally.")) {
+      localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+      localStorage.removeItem(STORAGE_KEYS.FILES);
+      setMessages([DEFAULT_MESSAGE]);
+      setFiles([]);
+      setAgentState({ status: 'idle' });
+      setViewMode(ViewMode.CHAT);
     }
   };
 
@@ -501,6 +515,23 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+             <div className="flex p-0.5 bg-obsidian-800 rounded-lg border border-white/5 items-center">
+                 {/* Persistence Status */}
+                 {lastSaved && (
+                     <div className="px-2 flex items-center gap-1.5 opacity-50 text-[10px] text-gray-400 font-mono border-r border-white/10 mr-1">
+                         <Save size={10} />
+                         <span>Saved</span>
+                     </div>
+                 )}
+                 <button 
+                  onClick={handleResetSession}
+                  className="p-1.5 rounded-md text-gray-500 hover:text-neon-rose hover:bg-neon-rose/10 transition-colors"
+                  title="Reset Session & Clear Storage"
+                 >
+                    <Trash2 size={14} />
+                 </button>
+             </div>
+
              <div className="flex p-0.5 bg-obsidian-800 rounded-lg border border-white/5">
                 <button
                   onClick={() => setViewMode(ViewMode.CHAT)}
