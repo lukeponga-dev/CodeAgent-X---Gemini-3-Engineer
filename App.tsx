@@ -13,7 +13,7 @@ export default function App() {
     {
       id: 'welcome',
       role: 'model',
-      text: "I am DevAgent, powered by Gemini 3. \n\nI can analyze your codebase, interpret architecture diagrams, and debug failure signals. Upload your files to the context sidebar to get started.",
+      text: "I am CodeAgent X, powered by Gemini 3. \n\nI can analyze your codebase, interpret architecture diagrams, and debug failure signals. Upload your files to the context sidebar to get started.",
       timestamp: Date.now()
     }
   ]);
@@ -294,7 +294,7 @@ export default function App() {
               <Sparkles size={18} />
             </div>
             <div>
-              <h1 className="font-bold text-gray-100 tracking-tight">DevAgent</h1>
+              <h1 className="font-bold text-gray-100 tracking-tight">CodeAgent X</h1>
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <span className={`w-2 h-2 rounded-full ${agentState.status === 'analyzing' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`}></span>
                 {agentState.status === 'analyzing' ? 'Reasoning...' : 'System Online'}
@@ -303,22 +303,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6">
-             {/* Thinking Budget Slider */}
-             <div className="flex items-center gap-3">
-               <input 
-                 type="range"
-                 min="0"
-                 max="16000"
-                 step="1024"
-                 value={thinkingBudget}
-                 onChange={(e) => setThinkingBudget(parseInt(e.target.value))}
-                 className="w-24 h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-purple-500 hover:accent-purple-400"
-                 title={`Thinking Budget: ${thinkingBudget} tokens`}
-               />
-             </div>
-
-             <div className="h-6 w-px bg-gray-800"></div>
-
             {/* View Toggle */}
             <div className="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
               <button
@@ -434,7 +418,7 @@ export default function App() {
             </div>
             <div className="text-center mt-2">
               <p className="text-[10px] text-gray-600">
-                  DevAgent interacts with simulated file context. Sensitive data is not persisted.
+                  CodeAgent X interacts with simulated file context. Sensitive data is not persisted.
               </p>
             </div>
           </div>

@@ -6,7 +6,7 @@ import { AgentMode, FileContext } from '../types';
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const SYSTEM_INSTRUCTION = `
-You are DevAgent, an elite autonomous senior software engineer and architect. 
+You are CodeAgent X, an elite autonomous senior software engineer and architect. 
 You are powered by Gemini 3.
 
 Your Capabilities:
