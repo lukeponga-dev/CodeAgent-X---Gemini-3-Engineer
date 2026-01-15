@@ -1,7 +1,7 @@
 {
   "name": "codeagent-x---gemini-3-engineer",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,12 +16,12 @@
     "react-syntax-highlighter": "^16.1.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.0",
-    "d3": "7"
+    "d3": "7",
+    "typescript": "~5.8.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
 }
